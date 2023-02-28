@@ -1,7 +1,7 @@
 # p2p-contracts
 
 
-```
+```solidity
 pragma cashscript ^0.7.4;
 
 /*
