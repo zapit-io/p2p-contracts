@@ -1,0 +1,147 @@
+pragma cashscript ^0.7.4;
+
+/*
+* Create an Escrow contract between two parties with arbiter as the third party.
+* @param: arbiterPk: Public Key of the arbiter.
+* @param: buyerPk: Public Key of the buyer.
+* @param: sellerPk: Public Key of the seller.
+* @param: recipientBuyerPk: Public Key of the recipient buyer.
+* @param: recipientSellerPk: Public Key of the recipient seller.
+* @param: arbiterFee: Fee for arbiter.
+*/
+contract Escrow(
+  pubkey arbiterPk,
+  pubkey buyerPk,
+  pubkey sellerPk,
+  pubkey recipientBuyerPk,
+  pubkey recipientSellerPk,
+  int arbiterFee
+  ) {
+
+  /*
+  * Can be called by anyone but the signature is done by the seller
+  * - Message: 'x'
+  * - Check signature of: Seller
+  * - Pay to: Buyer
+  * - Reason: Successful trade, check the signature of the seller to release the escrow
+  *
+  * @param: message: Message that is signed by the seller.
+  * @param: signature: Data signature and if valid, release the funds
+  */
+  function execute(
+      bytes message,
+      datasig signature
+  ) {
+    // Check that only single input is being used in this transaction
+    require(tx.inputs.length == 1);
+    
+    // 'x' in ascii chart is 120
+    require(message == bytes(120));
+
+    // Set the miner fee to 900 sats
+    int minerFee = 900;
+    // Amount being spent to one of the parties.
+    int spendingAmount = tx.inputs[0].value - minerFee - arbiterFee;
+    // // Pay to party is buyer's primary address
+    bytes25 payToPartyLockingBytecode = new LockingBytecodeP2PKH(hash160(recipientBuyerPk));
+    bytes25 arbiterLockingBytecode = new LockingBytecodeP2PKH(hash160(arbiterPk));
+
+    // In case of successful transaction, make sure that the second output is arbiter fee
+    require(tx.outputs[1].value == arbiterFee);
+    require(tx.outputs[1].lockingBytecode == arbiterLockingBytecode);
+  
+    // Make sure that the first output has the correct amount
+    require(tx.outputs[0].value == spendingAmount);
+    require(tx.outputs[0].lockingBytecode == payToPartyLockingBytecode);
+    require(checkDataSig(signature, message, sellerPk));
+  }
+
+  /*
+  * Can be called by anyone and the signature is done by Buyer
+  * - Message: 'c'
+  * - Check signature of: Buyer
+  * - Pay to: Seller
+  * - Reason: Trade cancelled, check the signature of the buyer to release
+  *   the escrow funds back to the seller
+  *
+  * @param: message: Message that is signed by the buyer.
+  * @param: signature: Data signature and if valid, release the funds
+  */
+  function cancel(
+      bytes message,
+      datasig signature
+  ) {
+    // Check that only single input is being used in this transaction
+    require(tx.inputs.length == 1);
+
+    // 'c' is the ascii chart is 99 
+    require(message == bytes(99));
+
+    // Set the miner fee to 800 sats
+    int minerFee = 800;
+    // Amount being spent to one of the parties.
+    int spendingAmount = tx.inputs[0].value - minerFee;
+    bytes25 payToPartyLockingBytecode = new LockingBytecodeP2PKH(hash160(recipientSellerPk));
+    // Make sure that the first output has the correct amount
+    require(tx.outputs[0].value == spendingAmount);
+    require(tx.outputs[0].lockingBytecode == payToPartyLockingBytecode);
+    require(checkDataSig(signature, message, buyerPk));
+  }
+
+  /*
+  * Can be called by anyone but the signature is done by the arbiter and one of the parties
+  * Case 1:
+  *    Message: 'b'
+  *    Check signature of: Buyer and Arbiter
+  *    Pay to: Buyer
+  * Case 2:
+  *    Message: 's'
+  *    Check signature of: Seller and Arbiter
+  *    Pay to: Seller
+  *
+  * @param: message: Message that is signed by both of the parties
+  * @param: sigParty: Check the signature of buyer or seller as per dispute resolution result
+  * @param: sigArbiter: Check the signature of the arbiter
+  */
+  function resolveDispute(
+    bytes message,
+    datasig sigParty,
+    datasig sigArbiter
+  ) {
+    // Check that only single input is being used in this transaction
+    require(tx.inputs.length == 1);
+
+    // 'b' is the ascii chart is 98
+    // 's' is the ascii chart is 115
+    require(message == bytes(98) || message == bytes(115));
+
+    // Set the miner fee to 800 sats
+    int minerFee = 800;
+    // Amount being spent to the authorised party.
+    int spendingAmount = tx.inputs[0].value - minerFee - arbiterFee;
+    // Make sure the amount being spent is correct.
+    require(tx.outputs[0].value == spendingAmount);
+    require(tx.outputs[1].value == arbiterFee);
+
+    // Default values of case 'b' here. i.e Buyer gets the funds
+    bytes25 payToPartyLockingBytecode = new LockingBytecodeP2PKH(hash160(recipientBuyerPk));
+    // For default case of 'b', check signature of the buyer
+    pubkey checkSignatureOf = buyerPk;
+
+    if (message == bytes(115)){
+      payToPartyLockingBytecode = new LockingBytecodeP2PKH(hash160(recipientSellerPk));
+      // Check signature of the seller
+      checkSignatureOf = sellerPk;
+    }
+
+    bytes25 arbiterLockingBytecode = new LockingBytecodeP2PKH(hash160(arbiterPk));
+    // First output goes to one of the parties
+    require(tx.outputs[0].lockingBytecode == payToPartyLockingBytecode);
+    // Second output goes to arbiter
+    require(tx.outputs[1].lockingBytecode == arbiterLockingBytecode);
+    // Check signature of the party receiving the money
+    require(checkDataSig(sigParty, message, checkSignatureOf));
+    // Check signature of the arbiter
+    require(checkDataSig(sigArbiter, message, arbiterPk));
+  }
+}
