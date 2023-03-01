@@ -23,7 +23,7 @@ contract Escrow(
   ) {
 
   /*
-  * Can be called by anyone but the signature is done by the seller
+  * The contract gets executed and the funds are released to the buyer recipient
   * - Message: 'x'
   * - Check signature of: Seller
   * - Pay to: Buyer
@@ -61,7 +61,7 @@ contract Escrow(
   }
 
   /*
-  * Can be called by anyone and the signature is done by Buyer
+  * The contract gets cancelled and the funds are released to the seller recipient
   * - Message: 'c'
   * - Check signature of: Buyer
   * - Pay to: Seller
@@ -93,7 +93,7 @@ contract Escrow(
   }
 
   /*
-  * Can be called by anyone but the signature is done by the arbiter and one of the parties
+  * The contract gets resolved and the funds are released to either seller or buyer recipient based based on the message type
   * Case 1:
   *    Message: 'b'
   *    Check signature of: Buyer and Arbiter
